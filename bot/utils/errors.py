@@ -16,6 +16,10 @@ class NoRules(Exception):
     def __init__(self):
         super().__init__(f"No rules were configured for this guild.\n\n**More info:** {guide}NoRules")
 
+class BothMessagesAndNick(Exception):
+    def __init__(self):
+        super().__init__(f"Both `messages` and `nick` were passed to `await utils.aimod()`.\n\n**More info:** {guide}BothMessagesAndNick")
+
 class GPTResponseProcessingFailed(Exception):
     def __init__(self):
         super().__init__(f"Error in GPT-3.5-turbo response processing.\n\n**More info:** {guide}GPTResponseProcessingFailed")

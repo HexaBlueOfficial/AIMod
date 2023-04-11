@@ -1,12 +1,12 @@
 import discord
-import typing
 import aiohttp
 import json
 import re
 import random
-from . import errors
+from typing import *
+from . import errors, views
 
-async def add_guild(auth: str, guild: discord.Guild) -> typing.Dict[str, typing.Any]:
+async def add_guild(auth: str, guild: discord.Guild) -> Dict[str, Any]:
     """
     Adds a Guild to the database.
 
@@ -25,7 +25,7 @@ async def add_guild(auth: str, guild: discord.Guild) -> typing.Dict[str, typing.
 
     return response
 
-async def remove_guild(auth: str, guild: discord.Guild) -> typing.Dict[str, typing.Any]:
+async def remove_guild(auth: str, guild: discord.Guild) -> Dict[str, Any]:
     """
     Removes a Guild from the database.
 
@@ -42,7 +42,7 @@ async def remove_guild(auth: str, guild: discord.Guild) -> typing.Dict[str, typi
 
     return response
 
-async def get_guild(guild: discord.Guild) -> typing.Dict[str, typing.Union[str, int]]:
+async def get_guild(guild: discord.Guild) -> Dict[str, Any]:
     """
     Gets a Guild's configuration.
 
@@ -56,7 +56,7 @@ async def get_guild(guild: discord.Guild) -> typing.Dict[str, typing.Union[str, 
 
     return response
 
-async def edit_config(auth: str, guild: discord.Guild, lang: str=None, openai: str=None, scale_max: int=None, actions: typing.List[str]=None, log_mod: discord.TextChannel=None, log_flag: discord.TextChannel=None) -> typing.Dict[str, typing.Union[str, int]]:
+async def edit_config(auth: str, guild: discord.Guild, *, lang: str, openai: str, scale_max: int, log_mod: discord.TextChannel, log_flag: discord.TextChannel) -> Dict[str, Union[str, int]]:
     """
     Modifies the Guild's full configuration.
     @param auth: Authorization key.
@@ -64,16 +64,18 @@ async def edit_config(auth: str, guild: discord.Guild, lang: str=None, openai: s
     @param guild: The Guild to modify the configuration of.
     @type guild: discord.Guild
     @param lang: The language.
-    @type lang: typing.Optional[str]
+    @type lang: Optional[str]
     @param openai: The OpenAI API key to use.
-    @type openai: typing.Optional[str]
+    @type openai: Optional[str]
+    @param scale_max: The highest number for the rating scale.
+    @type scale_max: Optional[int]
     @param log_mod: The channel for moderation logs.
-    @type log_mod: typing.Optional[discord.TextChannel]
+    @type log_mod: Optional[discord.TextChannel]
     @param log_flag: The channel for flagged message logs.
-    @type log_flag: typing.Optional[discord.TextChannel]
+    @type log_flag: Optional[discord.TextChannel]
     """
 
-    if lang is None and openai is None and log_mod is None and log_flag is None:
+    if lang is None and openai is None and scale_max is None and log_mod is None and log_flag is None:
         raise errors.AtLeastOneEdit
     
     headers = {"auth": f"{auth}"}
@@ -81,6 +83,7 @@ async def edit_config(auth: str, guild: discord.Guild, lang: str=None, openai: s
         async with session.patch(f"https://aimod.hexa.blue/api/guilds/{guild.id}", json={
             "lang": lang,
             "openai": openai,
+            "scale_max": scale_max,
             "log_mod": log_mod.id if log_mod is not None else None,
             "log_flag": log_flag.id if log_flag is not None else None
         }) as response:
@@ -88,7 +91,7 @@ async def edit_config(auth: str, guild: discord.Guild, lang: str=None, openai: s
 
     return response
 
-def extract_lines(lang: str) -> typing.Dict[str, str]:
+def extract_lines(lang: str) -> Dict[str, str]:
     """
     Extracts lines from the language string.
 
@@ -97,25 +100,39 @@ def extract_lines(lang: str) -> typing.Dict[str, str]:
     """
 
     with open(f"./AIMod/bot/json/lang/{lang.lower()}.json") as langfile:
-        lines: typing.Dict[str, str] = json.load(langfile)
+        lines: Dict[str, str] = json.load(langfile)
 
     return lines
 
-async def init_cmd(guild: discord.Guild) -> typing.Tuple[typing.Dict[str, str], str]:
+async def get_config(guild: discord.Guild) -> Tuple[Dict[str, str], str, List[str], int, List[Literal["NONE", "FLAG", "DELETE", "WARN", "DELETE_WARN"]], int, int]:
     """
-    Returns a (lines, openai) tuple, needed for most commands.
+    Returns a (lines, openai, rules, scale_max, actions) tuple, in other words a processed version of the Guild's configuration.
 
-    @param guild: The Guild where the command is being ran.
+    @param guild: The Guild to get the configuration of.
     @type guild: discord.Guild
     """
 
     config = await get_guild(guild)
-
+    
     lines = extract_lines(config["lang"])
+    openai = None
+    if config["openai"] is not None:
+        openai = config["openai"]
+    else:
+        raise errors.NoOpenAIKey
+    rules = None
+    if config["rules"] is not None:
+        rules = config["rules"]
+    else:
+        raise errors.NoRules
+    scale_max = config["scale_max"]
+    actions = config["actions"]
+    log_mod = config["log_mod"]
+    log_flag = config["log_flag"]
 
-    return (lines, config["openai"])
+    return lines, openai, rules, scale_max, actions, log_mod, log_flag
 
-async def add_warning(auth: str, guild: discord.Guild, user: discord.Member, mod: discord.Member, reason: str=None) -> typing.Dict[str, typing.Any]:
+async def add_warning(auth: str, guild: discord.Guild, user: discord.Member, mod: discord.Member, *, reason: str) -> Dict[str, Any]:
     """
     Adds a warning to the database.
 
@@ -126,7 +143,7 @@ async def add_warning(auth: str, guild: discord.Guild, user: discord.Member, mod
     @param user: The warned user.
     @type user: discord.Member
     @param reason: The warning reason.
-    @type reason: typing.Optional[str]
+    @type reason: Optional[str]
     """
 
     headers = {"auth": f"{auth}"}
@@ -140,7 +157,7 @@ async def add_warning(auth: str, guild: discord.Guild, user: discord.Member, mod
 
     return response
 
-async def remove_warning(auth: str, warn_id: int) -> typing.Dict[str, typing.Any]:
+async def remove_warning(auth: str, warn_id: int) -> Dict[str, Any]:
     """
     Removes a warning.
 
@@ -160,27 +177,16 @@ async def remove_warning(auth: str, warn_id: int) -> typing.Dict[str, typing.Any
     except KeyError:
         return response
 
-def prepare_gpt(config: typing.Dict[str, typing.Union[str, int]]):
+def prepare_gpt(config: Tuple[Dict[str, str], str, List[str], int, List[Literal["NONE", "FLAG", "DELETE", "WARN", "DELETE_WARN"]], int, int]) -> Tuple[Dict[str, str], str, str, int]:
     """
     Prepares `await utils.gpt_msg()` and `await utils.gpt_nick()`.
 
-    @param config: Guild configuration.
-    @type config: typing.Dict[str, typing.Union[str, int]]
+    @param config: Processed Guild configuration.
+    @type config: Tuple[Dict[str, str], str, List[str], int, List[Literal["NONE", "FLAG", "DELETE", "WARN", "DELETE_WARN"]], int, int]
     """
 
-    lines = extract_lines(config["lang"])
-    openai = None
-    if config["openai"] is not None:
-        openai = config["openai"]
-    else:
-        raise errors.NoOpenAIKey
-    rules = None
-    if config["rules"] is not None:
-        rules = config["rules"]
-    else:
-        raise errors.NoRules
-    scale_max = config["scale_max"]
-
+    lines, openai, rules, scale_max = config
+    
     rls = ""
     for rule in rules:
         rls += f"• {rule}\n"
@@ -188,26 +194,30 @@ def prepare_gpt(config: typing.Dict[str, typing.Union[str, int]]):
 
     return lines, openai, rls, scale_max
 
-async def gpt_msg(config: typing.Dict[str, typing.Union[str, int]], messages: typing.List[discord.Message]) -> str:
+async def gpt(prep: Tuple[Dict[str, str], str, str, int], *, messages: List[discord.Message], nick: str) -> str:
     """
     Sends messages to GPT-3.5-turbo.
 
-    @param config: The Guild where the messages were sent's configuration, found through `await utils.get_guild()`.
-    @type config: typing.Dict[str, typing.Union[str, int]]
+    @param prep: GPT preparation, found through `utils.prepare_gpt()`.
+    @type prep: Tuple[Dict[str, str], str, str, int]
     @param messages: The list of messages to send.
-    @type messages: typing.List[discord.Message]
+    @type messages: Optional[List[discord.Message]]
+    @param nick: The nickname to send.
+    @type nick: Optional[str]
     """
 
-    lines, openai, rls, scale_max = prepare_gpt(config)
+    lines, openai, rls, scale_max = prep
 
-    contents = []
-    for message in messages:
-        contents.append(message.content)
-    
-    msgs = ""
-    for content in contents:
-        msgs += f"{content}\n"
-    msgs = msgs.rstrip()
+    gptcontent = ""
+    if messages is not None:
+        msgs = ""
+        for message in messages:
+            msgs += f"{message.content}\n"
+        msgs = msgs.rstrip()
+
+        gptcontent = lines["GPT"]["MESSAGES"].replace("{rls}", rls).replace("{msgs}", msgs).replace("{scale_max}", scale_max)
+    elif nick is not None:
+        gptcontent = lines["GPT"]["NICKNAME"].replace("{rls}", rls).replace("{nick}", nick).replace("{scale_max}", scale_max)
 
     headers = {"Authorization": f"Bearer {openai}"}
     async with aiohttp.ClientSession(headers=headers) as session:
@@ -215,41 +225,16 @@ async def gpt_msg(config: typing.Dict[str, typing.Union[str, int]], messages: ty
             "model": "gpt-3.5-turbo",
             "messages": [{
                 "role": "user",
-                "content": lines["GPT"]["MESSAGES"].replace("{rls}", rls).replace("{msgs}", msgs).replace("{scale_max}", scale_max)
+                "content": gptcontent
             }]
         }) as response:
             response = await response.json()
     
     return response["choices"][0]["message"]["content"]
 
-async def gpt_nick(config: typing.Dict[str, typing.Union[str, int]], nickname: str) -> str:
+def process_gpt(gpt: str) -> List[Dict[str, Union[str, int]]]:
     """
-    Sends a nickname to GPT-3.5-turbo.
-
-    @param config: The Guild where the nickname was found's configuration, found through `await utils.get_guild()`.
-    @type config: typing.Dict[str, typing.Union[str, int]]
-    @param nickname: The nickname to send.
-    @type nickname: str
-    """
-
-    lines, openai, rls, scale_max = prepare_gpt(config)
-
-    headers = {"Authorization": f"Bearer {openai}"}
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.post("https://api.openai.com/v1/chat/completions", json={
-            "model": "gpt-3.5-turbo",
-            "messages": [{
-                "role": "user",
-                "content": lines["GPT"]["NICKNAME"].replace("{rls}", rls).replace("{nick}", nickname).replace("{scale_max}", scale_max)
-            }]
-        }) as response:
-            response = await response.json()
-    
-    return response["choices"][0]["message"]["content"]
-
-def process_gpt(gpt: str) -> typing.List[typing.Dict[str, typing.Union[str, int]]]:
-    """
-    Processes GPT-3.5-turbo's response to take eventual action.
+    Processes GPT-3.5-turbo's response.
 
     @param gpt: GPT-3.5-turbo's response.
     @type gpt: str
@@ -264,7 +249,7 @@ def process_gpt(gpt: str) -> typing.List[typing.Dict[str, typing.Union[str, int]
 
     ratings = ratingstr.split("\n")
 
-    ratingsx: typing.List[typing.Dict[str, typing.Union[str, int]]] = []
+    ratingsx: List[Dict[str, Union[str, int]]] = []
     for rating in ratings:
         ratingspl = rating.split(" - ")
 
@@ -280,25 +265,84 @@ def process_gpt(gpt: str) -> typing.List[typing.Dict[str, typing.Union[str, int]
     
     return ratingsx
 
-def make_embed(title: str, description: str=None, thumbnail: str=None, image: str=None, fields: typing.List[list]=None) -> discord.Embed:
+async def aimod(bot: discord.Client, guild: discord.Guild, *, messages: List[discord.Message], member: discord.Member) -> List[Dict[str, Union[str, int]]]:
+    """
+    Sends request to GPT-3.5-turbo and takes action.
+
+    @param bot: The Client instance, to take actions.
+    @type bot: discord.Client
+    @param guild: The Guild the message(s) or nickname was found.
+    @type guild: discord.Guild
+    @param messages: The messages that will be sent to GPT-3.5-turbo.
+    @type messages: Optional[List[discord.Message]]
+    @param member: The Member using the nickname that will be sent to GPT-3.5-turbo.
+    @type member: Optional[discord.Member]
+    """
+
+    if messages is not None and member is not None:
+        raise errors.BothMessagesAndNick
+    
+    config = await get_config(guild)
+    prep = prepare_gpt(config)
+
+    gptres = await gpt(prep, messages=messages, nick=member.nick)
+    ratings = process_gpt(gptres)
+
+    lines, openai, rules, scale_max, actions, log_mod, log_flag = config
+
+    with open("./AIMod/bot/json/embed.json") as embedfile:
+        embed: Dict[str, str] = json.load(embedfile)
+
+    for rating in ratings:
+        message = messages[ratings.index(rating)] if messages is not None else None
+
+        match actions[rating["rating"]]:
+            case "NONE":
+                rating["action"] = "NONE"
+            case "FLAG":
+                rating["action"] = "FLAG"
+
+                log = bot.get_channel(log_flag)
+
+                e = discord.Embed(title=lines["log"]["flag"]["title"].replace("{x}", lines["message"] if message is not None else lines["nickname"]), color=0xff8800, description=rating["content"])
+                e.set_author(name=str(message.author) if message is not None else str(member), icon_url=message.author.avatar.url if message is not None else member.avatar.url)
+                e.set_thumbnail(url="https://aimod.hexa.blue/images/flag.png")
+                if message is not None:
+                    e.add_field(name=lines["log"]["flag"]["message_info"], value=lines["log"]["flag"]["message_info_value"].replace("{id}", message.id).replace("{channel}", f"{message.channel.mention} (`{message.channel.id}`)"))
+                e.set_footer(text=embed["footer"], icon_url=embed["icon"])
+                await log.send(embed=e, view=views.FlagLog())
+            case "DELETE":
+                rating["action"] = "DELETE"
+
+                ...
+            case "WARN":
+                rating["action"] = "WARN"
+
+                ...
+            case "DELETE_WARN":
+                rating["action"] = "DELETE_WARN"
+    
+    return ratings
+
+def make_embed(title: str, *, description: str, thumbnail: str, image: str, fields: List[list]) -> discord.Embed:
     """
     Makes an Embed!
 
     @param title: Embed title.
     @type title: str
     @param description: Embed description.
-    @type description: typing.Optional[str]
+    @type description: Optional[str]
     @param thumbnail: Embed thumbnail image URL.
-    @type thumbnail: typing.Optional[str]
+    @type thumbnail: Optional[str]
     @param image: Embed image URL.
-    @type image: typing.Optional[str]
+    @type image: Optional[str]
     @param fields: Embed fields, in [name, value, inline] format.
-    @type fields: typing.Optional[typing.List[list]]
+    @type fields: Optional[List[list]]
     """
 
-    with open("./Agostino/bot/json/embed.json") as embedfile:
-        embed: typing.Dict[str, str] = json.load(embedfile)
-    
+    with open("./AIMod/bot/json/embed.json") as embedfile:
+        embed: Dict[str, str] = json.load(embedfile)
+
     e = discord.Embed(title=title, color=int(embed["color"], 16), description=description)
     e.set_author(name=embed["author"], icon_url=embed["icon"])
     if thumbnail is not None:
@@ -326,9 +370,9 @@ def random_presence(bot: discord.Client) -> discord.Activity:
     """
 
     with open("./AIMod/bot/json/presence.json") as presencefile:
-        presence: typing.Dict[str, typing.Dict[str, str]] = json.load(presencefile)
+        presence: Dict[str, Dict[str, str]] = json.load(presencefile)
     
-    randtype: typing.List[typing.List[str], discord.ActivityType] = random.choice([[presence["playing"], discord.ActivityType.playing], [presence["watching"], discord.ActivityType.watching]])
+    randtype: List[List[str], discord.ActivityType] = random.choice([[presence["playing"], discord.ActivityType.playing], [presence["watching"], discord.ActivityType.watching]])
     i = random.randint(0, len(randtype[0]) - 1)
 
     randtype[0][i] = randtype[0][i].replace("{u}", bot.users).replace("{g}", bot.guilds)
