@@ -1,0 +1,89 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+enum Language {
+    AR
+    BG
+    CA
+    CS
+    DA
+    DE
+    EL
+    EN
+    ES
+    ET
+    FA
+    FI
+    FR
+    HE
+    HI
+    HR
+    HU
+    ID
+    IT
+    JA
+    KO
+    LT
+    LV
+    MS
+    NL
+    NO
+    PL
+    PT
+    RO
+    RU
+    SK
+    SL
+    SQ
+    SV
+    TH
+    TR
+    UK
+    VI
+    ZH
+}
+
+enum Action {
+    NONE
+    FLAG
+    DELETE
+    WARN
+    TIMEOUT
+    WARN_TIMEOUT
+    DELETE_WARN
+    DELETE_TIMEOUT
+    DELETE_WARN_TIMEOUT
+}
+
+model Warning {
+    id       Int    @id @default(autoincrement())
+
+    user     Int
+    mod      Int
+
+    reason   String
+
+    guild    Guild  @relation(fields: [guild_id], references: [id])
+    guild_id Int
+}
+
+model Guild {
+    id        Int       @id
+
+    lang      Language  @default(EN)
+    openai    String?
+    rules     String[]
+    scale_max Int       @default(5)
+    actions   Action[]  @default([NONE, FLAG, FLAG, WARN, DELETE_WARN, DELETE_WARN])
+
+    log_mod   Int?
+    log_flag  Int?
+
+    warns     Warning[]
+}

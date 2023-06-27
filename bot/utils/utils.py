@@ -177,12 +177,12 @@ async def remove_warning(auth: str, warn_id: int) -> Dict[str, Any]:
     except KeyError:
         return response
 
-def prepare_gpt(config: Tuple[Dict[str, str], str, List[str], int, List[Literal["NONE", "FLAG", "DELETE", "WARN", "DELETE_WARN"]], int, int]) -> Tuple[Dict[str, str], str, str, int]:
+def prepare_gpt(config: Tuple[Dict[str, str], str, List[str], int, List[Literal["NONE", "FLAG", "DELETE", "WARN", "TIMEOUT", "WARN_TIMEOUT", "DELETE_WARN", "DELETE_TIMEOUT", "DELETE_WARN_TIMEOUT"]], int, int]) -> Tuple[Dict[str, str], str, str, int]:
     """
     Prepares `await utils.gpt_msg()` and `await utils.gpt_nick()`.
 
     @param config: Processed Guild configuration.
-    @type config: Tuple[Dict[str, str], str, List[str], int, List[Literal["NONE", "FLAG", "DELETE", "WARN", "DELETE_WARN"]], int, int]
+    @type config: Tuple[Dict[str, str], str, List[str], int, List[Literal["NONE", "FLAG", "DELETE", "WARN", "TIMEOUT", "WARN_TIMEOUT", "DELETE_WARN", "DELETE_TIMEOUT", "DELETE_WARN_TIMEOUT"]], int, int]
     """
 
     lines, openai, rules, scale_max = config
@@ -308,17 +308,34 @@ async def aimod(bot: discord.Client, guild: discord.Guild, *, messages: List[dis
                 e.set_author(name=str(message.author) if message is not None else str(member), icon_url=message.author.avatar.url if message is not None else member.avatar.url)
                 e.set_thumbnail(url="https://aimod.hexa.blue/images/flag.png")
                 if message is not None:
-                    e.add_field(name=lines["log"]["flag"]["message_info"], value=lines["log"]["flag"]["message_info_value"].replace("{id}", message.id).replace("{channel}", f"{message.channel.mention} (`{message.channel.id}`)"))
+                    e.add_field(name=lines["log"]["flag"]["message_info"]["name"], value=lines["log"]["flag"]["message_info"]["value"].replace("{id}", message.id).replace("{channel}", f"{message.channel.mention} (`{message.channel.id}`)"))
                 e.set_footer(text=embed["footer"], icon_url=embed["icon"])
                 await log.send(embed=e, view=views.FlagLog())
             case "DELETE":
                 rating["action"] = "DELETE"
 
-                ...
+                log = bot.get_channel(log_mod)
+
+                e = discord.Embed(title=lines["log"]["delete"]["title"].replace("{x}", lines["message"] if message is not None else lines["nickname"]), color=0xff3b3b, description=rating["content"])
+                e.set_author(name=str(message.author) if message is not None else str(member), icon_url=message.author.avatar.url if message is not None else member.avatar.url)
+                e.set_thumbnail(url="https://aimod.hexa.blue/images/flag.png")
+                if message is not None:
+                    e.add_field(name=lines["log"]["delete"]["message_info"]["name"], value=lines["log"]["delete"]["message_info"]["value"].replace("{id}", message.id).replace("{channel}", f"{message.channel.mention} (`{message.channel.id}`)"))
+                e.set_footer(text=embed["footer"], icon_url=embed["icon"])
+                await log.send(embed=e, view=views.DeleteLog())
+
+                if message is not None: await message.delete()
+                else: await member.edit(nick="")
             case "WARN":
                 rating["action"] = "WARN"
 
-                ...
+                log = bot.get_channel(log_mod)
+
+                e = discord.Embed(title=lines["log"]["warn"]["title"], color=0xff3b3b, description=rating["content"])
+                e.set_author(name=str(message.author) if message is not None else str(member), icon_url=message.author.avatar.url if message is not None else member.avatar.url)
+                e.set_thumbnail(url="https://aimod.hexa.blue/images/flag.png")
+                e.set_footer(text=embed["footer"], icon_url=embed["icon"])
+                await log.send(embed=e, view=views.WarnLog())
             case "DELETE_WARN":
                 rating["action"] = "DELETE_WARN"
     
@@ -352,7 +369,7 @@ def make_embed(title: str, *, description: str, thumbnail: str, image: str, fiel
             try:
                 field[2]
             except IndexError:
-                field.append(False)
+                field.append(True)
 
             e.add_field(name=field[0], value=field[1], inline=field[2])
     if image is not None:
